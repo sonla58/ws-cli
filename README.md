@@ -44,7 +44,8 @@ ws api/feat-x     # jumps straight to the worktree you aliased
 ### 1. One-liner (release binary)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/longnguyen/ws-cli/main/scripts/install.sh | bash
+# tbd: release-hosted install script (published once the repo is public)
+curl -fsSL <tbd>/scripts/install.sh | bash
 ```
 
 Installs into `$HOME/.local/bin`. Override the prefix with `PREFIX=/usr/local`
@@ -53,7 +54,8 @@ or pin a version with `WS_VERSION=v0.1.0`.
 ### 2. `go install`
 
 ```sh
-go install github.com/longnguyen/ws-cli/cmd/ws@latest
+# tbd: module path finalized once the repo is published
+go install <tbd>/cmd/ws@latest
 ```
 
 Puts the binary in `$(go env GOPATH)/bin`.
@@ -61,7 +63,8 @@ Puts the binary in `$(go env GOPATH)/bin`.
 ### 3. From source
 
 ```sh
-git clone https://github.com/longnguyen/ws-cli
+# tbd: repository URL
+git clone <tbd>
 cd ws-cli
 make install              # installs to $HOME/.local/bin
 # or: PREFIX=/usr/local sudo make install
