@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -33,27 +32,27 @@ type wizardStep int
 const (
 	stepSelect wizardStep = iota
 	stepNames
-	stepWorktreePrompt
 	stepGroup
 )
 
 type addWizardModel struct {
 	cfg        model.Config
 	candidates []Candidate
-	order      []int // indices into candidates for the current naming pass
-	cursor     int
+	order      []int // indices into candidates shown on the naming form, sorted roots-first
+	cursor     int  // position into order[] on stepNames (and stepSelect for selection)
+	selectCur  int  // cursor for stepSelect
 	step       wizardStep
-	editIdx    int // position into order[] (stepNames)
-	nameBuf    string
-	groupBuf   string
-	cancelled  bool
 
-	// Count of selected worktrees, computed after stepSelect.
-	pendingWorktrees int
+	// aliased[candidateIdx] == true means this worktree's alias field is active.
+	// Roots are always "active" and absent from this map.
+	aliased map[int]bool
+
+	groupBuf  string
+	cancelled bool
 }
 
-// RunAddWizard runs the multi-step wizard and returns the finalized candidates.
-// Only candidates with Selected=true should be written.
+// RunAddWizard runs the wizard and returns the finalized candidates. Only
+// those with Selected=true should be written.
 func RunAddWizard(cfg model.Config, candidates []Candidate) ([]Candidate, bool, error) {
 	for i := range candidates {
 		if candidates[i].Icon == "" {
@@ -61,7 +60,11 @@ func RunAddWizard(cfg model.Config, candidates []Candidate) ([]Candidate, bool, 
 		}
 		candidates[i].Selected = true
 	}
-	m := &addWizardModel{cfg: cfg, candidates: candidates}
+	m := &addWizardModel{
+		cfg:        cfg,
+		candidates: candidates,
+		aliased:    map[int]bool{},
+	}
 	p := tea.NewProgram(m, tea.WithOutput(os.Stderr), tea.WithAltScreen())
 	final, err := p.Run()
 	if err != nil {
@@ -86,13 +89,13 @@ func (m *addWizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSelect(key)
 	case stepNames:
 		return m.updateNames(key)
-	case stepWorktreePrompt:
-		return m.updateWorktreePrompt(key)
 	case stepGroup:
 		return m.updateGroup(key)
 	}
 	return m, tea.Quit
 }
+
+// ---- step: select ----
 
 func (m *addWizardModel) updateSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
@@ -100,15 +103,15 @@ func (m *addWizardModel) updateSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cancelled = true
 		return m, tea.Quit
 	case "up", "k":
-		if m.cursor > 0 {
-			m.cursor--
+		if m.selectCur > 0 {
+			m.selectCur--
 		}
 	case "down", "j":
-		if m.cursor < len(m.candidates)-1 {
-			m.cursor++
+		if m.selectCur < len(m.candidates)-1 {
+			m.selectCur++
 		}
 	case " ":
-		m.candidates[m.cursor].Selected = !m.candidates[m.cursor].Selected
+		m.candidates[m.selectCur].Selected = !m.candidates[m.selectCur].Selected
 	case "a":
 		for i := range m.candidates {
 			m.candidates[i].Selected = true
@@ -118,38 +121,33 @@ func (m *addWizardModel) updateSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.candidates[i].Selected = false
 		}
 	case "enter":
-		// Naming pass #1: roots only. Worktrees are deferred and only walked
-		// through if the user explicitly opts in at stepWorktreePrompt.
-		m.buildRootOrder()
-		m.pendingWorktrees = countSelectedWorktrees(m.candidates)
+		m.buildNameOrder()
 		if len(m.order) == 0 {
-			// No roots selected. If only worktrees were selected, jump to prompt.
-			if m.pendingWorktrees > 0 {
-				m.step = stepWorktreePrompt
-				return m, nil
-			}
 			m.cancelled = true
 			return m, tea.Quit
 		}
-		m.editIdx = 0
-		m.loadNameBuf()
+		// Pre-fill root buffers with DefaultName so Enter-through works.
+		for _, i := range m.order {
+			c := &m.candidates[i]
+			if !c.IsWorktree && c.Name == "" {
+				c.Name = c.DefaultName
+			}
+		}
+		m.cursor = 0
 		m.step = stepNames
 	}
 	return m, nil
 }
 
-func (m *addWizardModel) buildRootOrder() {
+// buildNameOrder lists selected candidate indices, roots first (so the prefix
+// preview for worktrees has a known parent alias on the same screen).
+func (m *addWizardModel) buildNameOrder() {
 	m.order = nil
 	for i, c := range m.candidates {
 		if c.Selected && !c.IsWorktree {
 			m.order = append(m.order, i)
 		}
 	}
-	_ = sort.Stable
-}
-
-func (m *addWizardModel) buildWorktreeOrder() {
-	m.order = nil
 	for i, c := range m.candidates {
 		if c.Selected && c.IsWorktree {
 			m.order = append(m.order, i)
@@ -157,90 +155,127 @@ func (m *addWizardModel) buildWorktreeOrder() {
 	}
 }
 
-func countSelectedWorktrees(cs []Candidate) int {
-	n := 0
-	for _, c := range cs {
-		if c.Selected && c.IsWorktree {
-			n++
-		}
-	}
-	return n
-}
-
-// loadNameBuf initializes the input for the current candidate. For worktrees
-// the buffer starts empty (optional alias); for roots it starts with
-// DefaultName so user can hit Enter to accept.
-func (m *addWizardModel) loadNameBuf() {
-	idx := m.order[m.editIdx]
-	c := m.candidates[idx]
-	if c.IsWorktree {
-		m.nameBuf = "" // optional
-	} else {
-		m.nameBuf = c.DefaultName
-	}
-}
+// ---- step: names (single-screen form) ----
 
 func (m *addWizardModel) updateNames(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "esc":
-		m.step = stepSelect
 	case "ctrl+c":
 		m.cancelled = true
 		return m, tea.Quit
-	case "enter":
-		idx := m.order[m.editIdx]
-		c := &m.candidates[idx]
-		trimmed := strings.TrimSpace(m.nameBuf)
-		if c.IsWorktree {
-			// Optional alias. Store just the suffix; prefix is applied in applyAdd.
-			c.Name = trimmed
-		} else {
-			if trimmed == "" {
-				trimmed = c.DefaultName
-			}
-			c.Name = trimmed
+	case "esc":
+		m.step = stepSelect
+		return m, nil
+	case "ctrl+s":
+		m.commitNames()
+		m.step = stepGroup
+		return m, nil
+	case "up", "shift+tab":
+		if m.cursor > 0 {
+			m.cursor--
 		}
-		m.editIdx++
-		if m.editIdx >= len(m.order) {
-			// Finished current pass. If roots just finished and worktrees are
-			// pending, ask first. Otherwise go to group step.
-			if m.pendingWorktrees > 0 && !m.candidates[m.order[0]].IsWorktree {
-				m.step = stepWorktreePrompt
-				return m, nil
-			}
-			m.step = stepGroup
+	case "down", "tab":
+		if m.cursor < len(m.order)-1 {
+			m.cursor++
+		}
+	case "enter":
+		// Enter moves to next field; on the last field it submits.
+		if m.cursor < len(m.order)-1 {
+			m.cursor++
 			return m, nil
 		}
-		m.loadNameBuf()
+		m.commitNames()
+		m.step = stepGroup
+		return m, nil
+	case "alt+a":
+		// alt+a toggles aliasing on a worktree row (non-destructive: keeps buffer).
+		return m.toggleAlias(), nil
 	case "backspace":
-		if len(m.nameBuf) > 0 {
-			m.nameBuf = m.nameBuf[:len(m.nameBuf)-1]
+		idx := m.order[m.cursor]
+		c := &m.candidates[idx]
+		if m.fieldActive(idx) && len(c.Name) > 0 {
+			c.Name = c.Name[:len(c.Name)-1]
 		}
 	default:
 		s := msg.String()
 		if len(s) == 1 {
-			m.nameBuf += s
+			idx := m.order[m.cursor]
+			c := &m.candidates[idx]
+			// On an inactive worktree row, pressing "a" toggles aliasing on.
+			// Any other letter also switches the row on and starts typing.
+			if c.IsWorktree && !m.aliased[idx] {
+				if s == "a" {
+					m.aliased[idx] = true
+					return m, nil
+				}
+				// Ignore stray keys on inactive rows to avoid surprises.
+				return m, nil
+			}
+			c.Name += s
 		}
 	}
 	return m, nil
 }
 
-func (m *addWizardModel) updateWorktreePrompt(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c":
-		m.cancelled = true
-		return m, tea.Quit
-	case "y", "Y":
-		m.buildWorktreeOrder()
-		m.editIdx = 0
-		m.loadNameBuf()
-		m.step = stepNames
-	case "n", "N", "enter", "esc":
-		// Skip worktree naming; leave all selected worktrees unaliased.
-		m.step = stepGroup
+func (m *addWizardModel) toggleAlias() tea.Model {
+	idx := m.order[m.cursor]
+	c := &m.candidates[idx]
+	if !c.IsWorktree {
+		return m
 	}
-	return m, nil
+	m.aliased[idx] = !m.aliased[idx]
+	return m
 }
+
+// fieldActive reports whether the candidate at idx should be treated as
+// having an active alias (roots always; worktrees only when enabled).
+func (m *addWizardModel) fieldActive(idx int) bool {
+	c := m.candidates[idx]
+	if !c.IsWorktree {
+		return true
+	}
+	return m.aliased[idx]
+}
+
+// commitNames enforces invariants before advancing: roots get DefaultName if
+// blank; inactive worktree fields get cleared to signal "unaliased".
+func (m *addWizardModel) commitNames() {
+	for _, idx := range m.order {
+		c := &m.candidates[idx]
+		if c.IsWorktree {
+			if !m.aliased[idx] {
+				c.Name = ""
+			} else {
+				c.Name = strings.TrimSpace(c.Name)
+			}
+			continue
+		}
+		c.Name = strings.TrimSpace(c.Name)
+		if c.Name == "" {
+			c.Name = c.DefaultName
+		}
+	}
+}
+
+// parentAliasFor returns the parent root's alias for a worktree candidate,
+// preferring an in-flight buffer over saved config.
+func (m *addWizardModel) parentAliasFor(c Candidate) string {
+	for _, cc := range m.candidates {
+		if cc.Selected && !cc.IsWorktree && filepath.Clean(cc.Path) == filepath.Clean(c.ParentRoot) {
+			if strings.TrimSpace(cc.Name) != "" {
+				return strings.TrimSpace(cc.Name)
+			}
+			return cc.DefaultName
+		}
+	}
+	for _, w := range m.cfg.Workspaces {
+		if filepath.Clean(w.Path) == filepath.Clean(c.ParentRoot) {
+			return w.Name
+		}
+	}
+	return filepath.Base(c.ParentRoot)
+}
+
+// ---- step: group ----
 
 func (m *addWizardModel) updateGroup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
@@ -268,25 +303,7 @@ func (m *addWizardModel) updateGroup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// parentAliasFor returns the display alias for a worktree candidate's parent.
-// Looks first in the current batch (already-named roots), then in cfg, then
-// falls back to the parent directory's basename.
-func (m *addWizardModel) parentAliasFor(c Candidate) string {
-	for _, cc := range m.candidates {
-		if cc.Selected && !cc.IsWorktree && filepath.Clean(cc.Path) == filepath.Clean(c.ParentRoot) {
-			if cc.Name != "" {
-				return cc.Name
-			}
-			return cc.DefaultName
-		}
-	}
-	for _, w := range m.cfg.Workspaces {
-		if filepath.Clean(w.Path) == filepath.Clean(c.ParentRoot) {
-			return w.Name
-		}
-	}
-	return filepath.Base(c.ParentRoot)
-}
+// ---- views ----
 
 func (m *addWizardModel) View() string {
 	switch m.step {
@@ -294,35 +311,10 @@ func (m *addWizardModel) View() string {
 		return m.viewSelect()
 	case stepNames:
 		return m.viewNames()
-	case stepWorktreePrompt:
-		return m.viewWorktreePrompt()
 	case stepGroup:
 		return m.viewGroup()
 	}
 	return ""
-}
-
-func (m *addWizardModel) viewWorktreePrompt() string {
-	var b strings.Builder
-	b.WriteString(StyleTitle.Render("ws · add — alias the selected worktrees?"))
-	b.WriteString("\n\n")
-	fmt.Fprintf(&b, "  %d worktree(s) will be saved under their parent.\n\n", m.pendingWorktrees)
-	b.WriteString(StylePath.Render("  Aliasing lets you jump directly with "))
-	b.WriteString(StyleSearch.Render("ws <root>/<suffix>"))
-	b.WriteString(StylePath.Render("."))
-	b.WriteString("\n")
-	b.WriteString(StylePath.Render("  Skipping keeps them accessible via the picker (expand the parent)."))
-	b.WriteString("\n\n")
-	b.WriteString("  ")
-	b.WriteString(StyleNameSel.Render("y"))
-	b.WriteString(StyleName.Render("  walk through each worktree to alias it"))
-	b.WriteString("\n")
-	b.WriteString("  ")
-	b.WriteString(StyleNameSel.Render("n / ⏎"))
-	b.WriteString(StyleName.Render("  skip — save them unaliased (default)"))
-	b.WriteString("\n\n")
-	b.WriteString(StyleFooter.Render("y alias · n/⏎ skip · ctrl+c cancel"))
-	return b.String()
 }
 
 func (m *addWizardModel) viewSelect() string {
@@ -335,7 +327,7 @@ func (m *addWizardModel) viewSelect() string {
 			mark = StyleCheckbox.Render("[x]")
 		}
 		prefix := " "
-		if i == m.cursor {
+		if i == m.selectCur {
 			prefix = StyleNameSel.Render(">")
 		}
 		icon := StyleIcon.Render(detect.Icon(detect.Type(c.Icon)))
@@ -351,40 +343,57 @@ func (m *addWizardModel) viewSelect() string {
 }
 
 func (m *addWizardModel) viewNames() string {
-	idx := m.order[m.editIdx]
-	c := m.candidates[idx]
 	var b strings.Builder
-	if c.IsWorktree {
-		b.WriteString(StyleTitle.Render("ws · add — worktree alias (optional)"))
-	} else {
-		b.WriteString(StyleTitle.Render("ws · add — name this workspace"))
-	}
-	b.WriteString("   ")
-	b.WriteString(StylePath.Render(fmt.Sprintf("(%d/%d)", m.editIdx+1, len(m.order))))
+	b.WriteString(StyleTitle.Render("ws · add — name your workspaces"))
 	b.WriteString("\n\n")
-	b.WriteString("  ")
-	b.WriteString(StyleIcon.Render(detect.Icon(detect.Type(c.Icon))))
-	b.WriteString("  ")
-	b.WriteString(StylePath.Render(c.Path))
+	b.WriteString(StylePath.Render("  Use ↑/↓ to move between rows. On a worktree row, press "))
+	b.WriteString(StyleNameSel.Render("a"))
+	b.WriteString(StylePath.Render(" to enable aliasing."))
 	b.WriteString("\n\n")
 
-	if c.IsWorktree {
-		prefix := m.parentAliasFor(c) + "/"
-		b.WriteString("  alias › ")
-		b.WriteString(StylePath.Render(prefix))
-		b.WriteString(StyleNameSel.Render(m.nameBuf + "▌"))
-		b.WriteString("\n\n")
-		b.WriteString(StylePath.Render("  leave empty to skip aliasing this worktree\n"))
-		b.WriteString(StylePath.Render("  (it's still saved; find it by expanding the parent in the picker)"))
-		b.WriteString("\n\n")
-		b.WriteString(StyleFooter.Render("⏎ next (empty = skip) · esc back · ctrl+c cancel"))
-	} else {
-		b.WriteString("  name › ")
-		b.WriteString(StyleNameSel.Render(m.nameBuf + "▌"))
-		b.WriteString("\n\n")
-		b.WriteString(StyleFooter.Render("⏎ next · esc back · ctrl+c cancel"))
+	for row, idx := range m.order {
+		c := m.candidates[idx]
+		focused := row == m.cursor
+		b.WriteString(m.renderNameRow(c, idx, focused))
+		b.WriteString("\n")
 	}
+
+	b.WriteString("\n")
+	b.WriteString(StyleFooter.Render(
+		"↑/↓ move · ⏎ next/save · a enable alias · ctrl+s save · esc back · ctrl+c cancel"))
 	return b.String()
+}
+
+func (m *addWizardModel) renderNameRow(c Candidate, idx int, focused bool) string {
+	icon := StyleIcon.Render(detect.Icon(detect.Type(c.Icon)))
+	caret := "  "
+	if focused {
+		caret = StyleNameSel.Render("› ")
+	}
+
+	header := fmt.Sprintf("%s%s  %s", caret, icon, StylePath.Render(c.Path))
+
+	var input string
+	if !c.IsWorktree {
+		input = "    name  › " + renderInput(c.Name, focused)
+	} else if m.aliased[idx] {
+		prefix := m.parentAliasFor(c) + "/"
+		input = "    alias › " + StylePath.Render(prefix) + renderInput(c.Name, focused)
+	} else {
+		hint := StylePath.Render("(unaliased — press ") +
+			StyleNameSel.Render("a") +
+			StylePath.Render(" to alias this worktree)")
+		input = "    alias › " + hint
+	}
+	return header + "\n" + input
+}
+
+func renderInput(buf string, focused bool) string {
+	cursor := ""
+	if focused {
+		cursor = "▌"
+	}
+	return StyleNameSel.Render(buf + cursor)
 }
 
 func (m *addWizardModel) viewGroup() string {
