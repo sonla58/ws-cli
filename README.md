@@ -33,7 +33,10 @@ The shell function captures the chosen path from `ws` and `cd`s your live shell 
 
 ```sh
 ws                   # TUI picker (onboarding screen if empty)
-ws <name>            # jump directly (or open a narrowed picker if multi-worktree)
+ws <name>            # jump directly (opens a narrowed picker if the workspace has worktrees)
+ws <name>/           # jump straight to the workspace root, skipping the picker
+ws <name>/<suffix>   # jump to an explicitly-aliased worktree
+ws <group>           # open picker filtered to a group
 ws add [path]        # wizard: find projects under path, let you choose + name them
 ws rm <name>         # remove a workspace or worktree
 ws list              # plain-text listing (grouped)

@@ -63,6 +63,13 @@ func runRoot(cmd *cobra.Command, args []string) error {
 		return openPicker(cfg, nil)
 	}
 	q := strings.Join(args, " ")
+	// Trailing slash means "the root of this workspace" — handy when a
+	// workspace has worktrees and `ws <name>` would otherwise open the picker.
+	rootOnly := false
+	if strings.HasSuffix(q, "/") && len(q) > 1 {
+		rootOnly = true
+		q = strings.TrimSuffix(q, "/")
+	}
 	hits := resolve.Resolve(cfg, q)
 
 	// Exact workspace/worktree name match wins outright.
@@ -90,12 +97,19 @@ func runRoot(cmd *cobra.Command, args []string) error {
 		os.Exit(1)
 	}
 	if len(hits) == 1 {
-		// Single match (workspace or worktree) → jump directly. Worktrees
-		// named explicitly (`ws root/suffix`) go straight to the worktree
-		// path; otherwise we open the workspace root. Use bare `ws` (or
-		// `ws <group>`) when you want the picker.
-		emitChosen(hits[0].Path())
-		return nil
+		h := hits[0]
+		if rootOnly && h.Workspace != nil {
+			emitChosen(h.Workspace.Path)
+			return nil
+		}
+		// Worktree hit or workspace without extra worktrees → jump.
+		if h.Worktree != nil || len(h.Workspace.Worktrees) == 0 {
+			emitChosen(h.Path())
+			return nil
+		}
+		// Workspace has worktrees → open narrowed picker so user can choose
+		// between root and worktrees. Use `ws <name>/` to jump straight to root.
+		return openPicker(cfg, []string{h.Workspace.Name})
 	}
 	names := map[string]bool{}
 	var uniq []string
