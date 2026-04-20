@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/longnguyen/ws-cli/internal/detect"
-	"github.com/longnguyen/ws-cli/internal/model"
+	"github.com/sonla58/ws-cli/internal/detect"
+	"github.com/sonla58/ws-cli/internal/model"
 )
 
 // Candidate is one repo/worktree discovered for the add wizard.

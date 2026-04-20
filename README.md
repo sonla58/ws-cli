@@ -44,8 +44,7 @@ ws api/feat-x     # jumps straight to the worktree you aliased
 ### 1. One-liner (release binary)
 
 ```sh
-# tbd: release-hosted install script (published once the repo is public)
-curl -fsSL <tbd>/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sonla58/ws-cli/main/scripts/install.sh | bash
 ```
 
 Installs into `$HOME/.local/bin`. Override the prefix with `PREFIX=/usr/local`
@@ -54,8 +53,7 @@ or pin a version with `WS_VERSION=v0.1.0`.
 ### 2. `go install`
 
 ```sh
-# tbd: module path finalized once the repo is published
-go install <tbd>/cmd/ws@latest
+go install github.com/sonla58/ws-cli/cmd/ws@latest
 ```
 
 Puts the binary in `$(go env GOPATH)/bin`.
@@ -63,8 +61,7 @@ Puts the binary in `$(go env GOPATH)/bin`.
 ### 3. From source
 
 ```sh
-# tbd: repository URL
-git clone <tbd>
+git clone https://github.com/sonla58/ws-cli
 cd ws-cli
 make install              # installs to $HOME/.local/bin
 # or: PREFIX=/usr/local sudo make install

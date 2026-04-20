@@ -10,8 +10,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"path/filepath"
 
-	"github.com/longnguyen/ws-cli/internal/detect"
-	"github.com/longnguyen/ws-cli/internal/model"
+	"github.com/sonla58/ws-cli/internal/detect"
+	"github.com/sonla58/ws-cli/internal/model"
 	"github.com/sahilm/fuzzy"
 )
 

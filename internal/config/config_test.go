@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/longnguyen/ws-cli/internal/model"
+	"github.com/sonla58/ws-cli/internal/model"
 )
 
 func TestLoadSaveRoundTrip(t *testing.T) {

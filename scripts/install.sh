@@ -2,16 +2,16 @@
 # Install ws by downloading the matching release archive from GitHub.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/longnguyen/ws-cli/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/sonla58/ws-cli/main/scripts/install.sh | bash
 #
 # Environment:
-#   WS_REPO     override the GitHub repo (default: longnguyen/ws-cli)
+#   WS_REPO     override the GitHub repo (default: sonla58/ws-cli)
 #   WS_VERSION  install a specific tag (default: latest release)
 #   PREFIX      install prefix (default: $HOME/.local; binary lands in $PREFIX/bin)
 
 set -euo pipefail
 
-REPO="${WS_REPO:-longnguyen/ws-cli}"
+REPO="${WS_REPO:-sonla58/ws-cli}"
 PREFIX="${PREFIX:-$HOME/.local}"
 BINDIR="$PREFIX/bin"
 

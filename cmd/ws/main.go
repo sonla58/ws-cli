@@ -10,14 +10,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/longnguyen/ws-cli/internal/config"
-	"github.com/longnguyen/ws-cli/internal/detect"
-	"github.com/longnguyen/ws-cli/internal/git"
-	"github.com/longnguyen/ws-cli/internal/model"
-	"github.com/longnguyen/ws-cli/internal/resolve"
-	"github.com/longnguyen/ws-cli/internal/scan"
-	"github.com/longnguyen/ws-cli/internal/shell"
-	"github.com/longnguyen/ws-cli/internal/tui"
+	"github.com/sonla58/ws-cli/internal/config"
+	"github.com/sonla58/ws-cli/internal/detect"
+	"github.com/sonla58/ws-cli/internal/git"
+	"github.com/sonla58/ws-cli/internal/model"
+	"github.com/sonla58/ws-cli/internal/resolve"
+	"github.com/sonla58/ws-cli/internal/scan"
+	"github.com/sonla58/ws-cli/internal/shell"
+	"github.com/sonla58/ws-cli/internal/tui"
 )
 
 var (

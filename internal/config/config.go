@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/BurntSushi/toml"
-	"github.com/longnguyen/ws-cli/internal/model"
+	"github.com/sonla58/ws-cli/internal/model"
 )
 
 // Path returns the config file path, honoring $WS_CONFIG and $XDG_CONFIG_HOME.

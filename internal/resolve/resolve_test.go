@@ -3,7 +3,7 @@ package resolve
 import (
 	"testing"
 
-	"github.com/longnguyen/ws-cli/internal/model"
+	"github.com/sonla58/ws-cli/internal/model"
 )
 
 func testCfg() model.Config {

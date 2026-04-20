@@ -1,4 +1,4 @@
-module github.com/longnguyen/ws-cli
+module github.com/sonla58/ws-cli
 
 go 1.26.2
 
