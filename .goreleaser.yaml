@@ -60,3 +60,26 @@ changelog:
 release:
   draft: false
   prerelease: auto
+
+brews:
+  - name: ws
+    repository:
+      owner: sonla58
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/sonla58/ws-cli"
+    description: "Fast, git-aware workspace manager for your terminal."
+    license: "MIT"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    install: |
+      bin.install "ws"
+    test: |
+      system "#{bin}/ws", "--version"
+    caveats: |
+      Add the shell integration to your rc file:
+        zsh:  eval "$(ws init zsh)"
+        bash: eval "$(ws init bash)"
+        fish: ws init fish | source

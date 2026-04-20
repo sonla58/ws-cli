@@ -39,9 +39,15 @@ ws api/feat-x     # jumps straight to the worktree you aliased
 
 ## Install
 
-`ws` ships as a single static binary. There are three ways to get it — pick one.
+`ws` ships as a single static binary. Pick whichever install method suits you.
 
-### 1. One-liner (release binary)
+### 1. Homebrew (macOS / Linux)
+
+```sh
+brew install sonla58/tap/ws
+```
+
+### 2. One-liner (release binary)
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/sonla58/ws-cli/main/scripts/install.sh | bash
@@ -50,7 +56,7 @@ curl -fsSL https://raw.githubusercontent.com/sonla58/ws-cli/main/scripts/install
 Installs into `$HOME/.local/bin`. Override the prefix with `PREFIX=/usr/local`
 or pin a version with `WS_VERSION=v0.1.0`.
 
-### 2. `go install`
+### 3. `go install`
 
 ```sh
 go install github.com/sonla58/ws-cli/cmd/ws@latest
@@ -58,7 +64,7 @@ go install github.com/sonla58/ws-cli/cmd/ws@latest
 
 Puts the binary in `$(go env GOPATH)/bin`.
 
-### 3. From source
+### 4. From source
 
 ```sh
 git clone https://github.com/sonla58/ws-cli
