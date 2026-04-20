@@ -1,12 +1,41 @@
-# ws
+<div align="center">
 
-Fast, git-aware workspace manager for your terminal.
+```
+██╗    ██╗███████╗
+██║    ██║██╔════╝
+██║ █╗ ██║███████╗
+██║███╗██║╚════██║
+╚███╔███╔╝███████║
+ ╚══╝╚══╝ ╚══════╝
+```
 
-- **Jump instantly**: `ws <name>` cd's to a saved workspace
-- **Browse in a TUI**: bare `ws` opens an elegant grouped picker
-- **Worktree-aware**: one workspace represents a git root and all its worktrees
-- **Smart add**: `ws add` walks the current tree, finds git projects (and their worktrees), and lets you pick & name them
-- **Single binary, single TOML**: fast cold start; no daemon, no database
+**Fast, git-aware workspace manager for your terminal.**
+
+[Install](#install) · [Usage](#usage) · [Worktrees](#how-worktree-workspaces-work) · [Config](#configuration)
+
+</div>
+
+---
+
+## Why `ws`?
+
+Your shell already has `cd`. But `cd ~/work/client-a/backend/services/api` isn't fun, and `cd`-ing into the right git worktree for a feature branch is worse. `ws` turns that into:
+
+```sh
+ws api            # picker if there are worktrees, otherwise jumps
+ws api/           # jumps straight to the root
+ws api/feat-x     # jumps straight to the worktree you aliased
+```
+
+### Highlights
+
+- **Instant jumps** — `ws <name>` resolves exact → prefix → fuzzy, cold-starts in milliseconds, no daemon
+- **Worktree-aware** — one workspace owns a git root and every worktree git reports; dedup is automatic when you add either
+- **Smart add wizard** — `ws add` walks the directory tree, finds git projects (including nested), shows them in a multi-select with auto-detected project icons, lets you alias each root and (optionally) each worktree in a single-screen form
+- **Grouped TUI picker** — groupable workspaces, fuzzy search, expand/collapse worktrees, Nerd Font icons per project type (node, next, rust, go, python, ios, android, tauri, electron, ruby, java, docker…)
+- **Empty-state onboarding** — first `ws` shows a welcome screen with a single keypress to add the current directory
+- **Single binary, plain TOML** — config at `~/.config/ws/config.toml`, hand-editable, dotfiles-friendly
+- **Works with bash, zsh, fish** — `ws init <shell>` prints the wrapper function that does the actual `cd`
 
 ## Install
 
@@ -86,19 +115,43 @@ ws init <shell>      # print shell integration script
 
 ### Picker keybindings
 
-```
-↑/↓     move          ⏎   open / expand
-→/←     expand/collapse    /   fuzzy search
-a       add current dir    q/esc   quit
-```
+| key | action |
+| --- | --- |
+| `↑` `↓` / `j` `k` | move |
+| `⏎` | open / expand / pick root |
+| `→` `←` / `l` `h` | expand / collapse worktrees |
+| `/` | fuzzy search |
+| `a` | add current dir |
+| `q` `esc` | quit |
 
 ### Add-wizard keybindings
 
-```
-space   toggle selection    a   select all
-n       select none         ⏎   next step / confirm
-esc     back / cancel
-```
+**Select step**
+
+| key | action |
+| --- | --- |
+| `space` | toggle selection on focused row |
+| `a` | select all · `n` select none |
+| `⏎` | confirm selection → naming |
+| `esc` | cancel |
+
+**Name step** (single-screen form)
+
+| key | action |
+| --- | --- |
+| `↑` `↓` / `Tab` `⇧Tab` | move between rows |
+| `⏎` | next row · submit from last row |
+| `a` | on a worktree row: enable aliasing (reveals `${root}/` prefix + editable suffix) |
+| `ctrl+s` | submit from any row |
+| `esc` | back to select step · `ctrl+c` cancel |
+
+**Group step**
+
+| key | action |
+| --- | --- |
+| typing | edit group name (leave empty for ungrouped) |
+| `⏎` | confirm and save |
+| `ctrl+c` `esc` | cancel |
 
 ## Configuration
 
@@ -133,18 +186,80 @@ Nerd Font glyphs.
 
 ## How worktree workspaces work
 
-- `ws add` on a git **root**: saves the root and attaches all its worktrees.
-- `ws add` on a **worktree**: resolves the common root via `git`. If the root is
-  already saved, the worktree is attached (deduped). If not, the root is saved
-  normally (which pulls in all its worktrees).
-- `ws <alias>` on a workspace with **no extra worktrees**: cd's directly.
-- `ws <alias>` on a workspace with **multiple worktrees**: opens the picker
-  narrowed to that workspace with its worktrees expanded.
+`ws` knows about `git worktree list --porcelain`. One workspace represents a repo
+and every worktree that repo currently has.
+
+**Adding:**
+
+- `ws add` on a git **root** → saves the root and attaches every worktree
+- `ws add` on a **worktree path** → `ws` resolves the common root. If the root
+  is already saved, only the new worktree is attached (deduped). If not, the
+  root is saved normally — which pulls in all worktrees in one shot.
+
+**Aliasing worktrees is optional.** During the add wizard, worktree rows start
+unaliased; press `a` on a row to enable aliasing (the UI shows a read-only
+`${root}/` prefix followed by an editable suffix). Unaliased worktrees are
+still saved — they live under the root in the picker and are reachable by
+expanding it.
+
+**Jumping:**
+
+| command | behavior |
+| --- | --- |
+| `ws api` | picker, narrowed to `api` + its worktrees (root is selectable as `(root)`) |
+| `ws api/` | straight to the **root** path (skip the picker) |
+| `ws api/feat-x` | straight to the explicitly-aliased worktree |
+| bare `ws` / `ws <group>` | full picker (reaches unaliased worktrees) |
+
+**Refreshing:** `ws refresh [name]` re-runs `git worktree list` and pulls new
+worktrees in unaliased (so they don't collide with your naming scheme).
+
+## Project-type icons
+
+`ws` detects the type of each workspace from signature files at add / refresh
+time and caches it in the config. Detected types:
+
+| type | signatures |
+| --- | --- |
+| node | `package.json` |
+| nextjs | `next.config.{js,mjs,ts}` |
+| tauri | `tauri.conf.json`, `src-tauri/` |
+| electron | `electron-builder.*`, `electron.vite.config.ts` |
+| rust | `Cargo.toml` |
+| go | `go.mod` |
+| python | `pyproject.toml`, `requirements.txt`, `setup.py`, `Pipfile` |
+| ios | `Podfile`, `*.xcodeproj`, `*.xcworkspace` |
+| android | `AndroidManifest.xml`, `build.gradle*`, `settings.gradle` |
+| ruby | `Gemfile` |
+| java | `pom.xml` |
+| docker | `Dockerfile`, `docker-compose.yml`, `compose.yml` |
+
+Icons render via Nerd Font glyphs by default. Set `NO_NERD_FONT=1` to fall
+back to plain letters.
 
 ## Development
 
 ```sh
-make build       # build binary
-make test        # run tests
-make install     # install to $GOPATH/bin
+make build                 # build binary into ./ws
+make test                  # run unit tests
+make install               # install to $HOME/.local/bin (override with PREFIX=/usr/local)
+make release-snapshot      # goreleaser dry-run (requires goreleaser)
 ```
+
+Project layout:
+
+```
+cmd/ws/              cobra entrypoint, subcommands
+internal/config/     TOML load/save, XDG paths, atomic writes
+internal/model/      Workspace / Group / Worktree types
+internal/git/        `git worktree list` parsing
+internal/scan/       depth-limited repo walker
+internal/detect/     project-type signature detection
+internal/shell/      shell integration templates (bash/zsh/fish)
+internal/resolve/    name → path resolver (exact → prefix → fuzzy)
+internal/tui/        bubbletea picker + add wizard
+```
+
+## License
+
+MIT (add a `LICENSE` file before tagging a release).
