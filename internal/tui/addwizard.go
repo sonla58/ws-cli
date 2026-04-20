@@ -33,19 +33,23 @@ type wizardStep int
 const (
 	stepSelect wizardStep = iota
 	stepNames
+	stepWorktreePrompt
 	stepGroup
 )
 
 type addWizardModel struct {
 	cfg        model.Config
 	candidates []Candidate
-	order      []int // indices into candidates, sorted roots-first for naming pass
+	order      []int // indices into candidates for the current naming pass
 	cursor     int
 	step       wizardStep
 	editIdx    int // position into order[] (stepNames)
 	nameBuf    string
 	groupBuf   string
 	cancelled  bool
+
+	// Count of selected worktrees, computed after stepSelect.
+	pendingWorktrees int
 }
 
 // RunAddWizard runs the multi-step wizard and returns the finalized candidates.
@@ -82,6 +86,8 @@ func (m *addWizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSelect(key)
 	case stepNames:
 		return m.updateNames(key)
+	case stepWorktreePrompt:
+		return m.updateWorktreePrompt(key)
 	case stepGroup:
 		return m.updateGroup(key)
 	}
@@ -112,8 +118,16 @@ func (m *addWizardModel) updateSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.candidates[i].Selected = false
 		}
 	case "enter":
-		m.buildNamingOrder()
+		// Naming pass #1: roots only. Worktrees are deferred and only walked
+		// through if the user explicitly opts in at stepWorktreePrompt.
+		m.buildRootOrder()
+		m.pendingWorktrees = countSelectedWorktrees(m.candidates)
 		if len(m.order) == 0 {
+			// No roots selected. If only worktrees were selected, jump to prompt.
+			if m.pendingWorktrees > 0 {
+				m.step = stepWorktreePrompt
+				return m, nil
+			}
 			m.cancelled = true
 			return m, tea.Quit
 		}
@@ -124,23 +138,33 @@ func (m *addWizardModel) updateSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// buildNamingOrder sorts selected candidate indices so roots come first.
-// Within roots and within worktrees, preserve discovery order. This lets the
-// naming step show a parent alias prefix while naming a worktree.
-func (m *addWizardModel) buildNamingOrder() {
+func (m *addWizardModel) buildRootOrder() {
 	m.order = nil
 	for i, c := range m.candidates {
 		if c.Selected && !c.IsWorktree {
 			m.order = append(m.order, i)
 		}
 	}
+	_ = sort.Stable
+}
+
+func (m *addWizardModel) buildWorktreeOrder() {
+	m.order = nil
 	for i, c := range m.candidates {
 		if c.Selected && c.IsWorktree {
 			m.order = append(m.order, i)
 		}
 	}
-	// Stable: Go's append preserves order; no sort needed.
-	_ = sort.Stable
+}
+
+func countSelectedWorktrees(cs []Candidate) int {
+	n := 0
+	for _, c := range cs {
+		if c.Selected && c.IsWorktree {
+			n++
+		}
+	}
+	return n
 }
 
 // loadNameBuf initializes the input for the current candidate. For worktrees
@@ -178,6 +202,12 @@ func (m *addWizardModel) updateNames(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.editIdx++
 		if m.editIdx >= len(m.order) {
+			// Finished current pass. If roots just finished and worktrees are
+			// pending, ask first. Otherwise go to group step.
+			if m.pendingWorktrees > 0 && !m.candidates[m.order[0]].IsWorktree {
+				m.step = stepWorktreePrompt
+				return m, nil
+			}
 			m.step = stepGroup
 			return m, nil
 		}
@@ -191,6 +221,23 @@ func (m *addWizardModel) updateNames(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(s) == 1 {
 			m.nameBuf += s
 		}
+	}
+	return m, nil
+}
+
+func (m *addWizardModel) updateWorktreePrompt(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		m.cancelled = true
+		return m, tea.Quit
+	case "y", "Y":
+		m.buildWorktreeOrder()
+		m.editIdx = 0
+		m.loadNameBuf()
+		m.step = stepNames
+	case "n", "N", "enter", "esc":
+		// Skip worktree naming; leave all selected worktrees unaliased.
+		m.step = stepGroup
 	}
 	return m, nil
 }
@@ -247,10 +294,35 @@ func (m *addWizardModel) View() string {
 		return m.viewSelect()
 	case stepNames:
 		return m.viewNames()
+	case stepWorktreePrompt:
+		return m.viewWorktreePrompt()
 	case stepGroup:
 		return m.viewGroup()
 	}
 	return ""
+}
+
+func (m *addWizardModel) viewWorktreePrompt() string {
+	var b strings.Builder
+	b.WriteString(StyleTitle.Render("ws · add — alias the selected worktrees?"))
+	b.WriteString("\n\n")
+	fmt.Fprintf(&b, "  %d worktree(s) will be saved under their parent.\n\n", m.pendingWorktrees)
+	b.WriteString(StylePath.Render("  Aliasing lets you jump directly with "))
+	b.WriteString(StyleSearch.Render("ws <root>/<suffix>"))
+	b.WriteString(StylePath.Render("."))
+	b.WriteString("\n")
+	b.WriteString(StylePath.Render("  Skipping keeps them accessible via the picker (expand the parent)."))
+	b.WriteString("\n\n")
+	b.WriteString("  ")
+	b.WriteString(StyleNameSel.Render("y"))
+	b.WriteString(StyleName.Render("  walk through each worktree to alias it"))
+	b.WriteString("\n")
+	b.WriteString("  ")
+	b.WriteString(StyleNameSel.Render("n / ⏎"))
+	b.WriteString(StyleName.Render("  skip — save them unaliased (default)"))
+	b.WriteString("\n\n")
+	b.WriteString(StyleFooter.Render("y alias · n/⏎ skip · ctrl+c cancel"))
+	return b.String()
 }
 
 func (m *addWizardModel) viewSelect() string {
