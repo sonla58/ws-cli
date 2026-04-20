@@ -421,6 +421,15 @@ func (m *pickerModel) viewEmpty() string {
 	return b.String()
 }
 
+// cursorMarker is character-based (not color-only) so the selected row
+// stays visible in contexts where color rendering is disabled.
+func cursorMarker(selected bool) string {
+	if selected {
+		return StyleNameSel.Render("▶ ")
+	}
+	return "  "
+}
+
 func (m *pickerModel) renderWorkspace(r row, selected bool) string {
 	indent := strings.Repeat("  ", r.depth)
 	icon := StyleIcon.Render(detect.Icon(detect.Type(r.w.Icon)))
@@ -437,8 +446,8 @@ func (m *pickerModel) renderWorkspace(r row, selected bool) string {
 	if selected {
 		nameStyle = StyleNameSel
 	}
-	return fmt.Sprintf("%s%s %s %s  %s",
-		indent, caret, icon, nameStyle.Render(name), StylePath.Render(r.w.Path))
+	return fmt.Sprintf("%s%s%s %s %s  %s",
+		cursorMarker(selected), indent, caret, icon, nameStyle.Render(name), StylePath.Render(r.w.Path))
 }
 
 func (m *pickerModel) renderWorktree(r row, selected bool) string {
@@ -459,8 +468,8 @@ func (m *pickerModel) renderWorktree(r row, selected bool) string {
 	if selected {
 		nameStyle = StyleNameSel
 	}
-	return fmt.Sprintf("%s· %s %s%s  %s",
-		indent, icon, nameStyle.Render(name), StylePath.Render(suffix), StylePath.Render(path))
+	return fmt.Sprintf("%s%s· %s %s%s  %s",
+		cursorMarker(selected), indent, icon, nameStyle.Render(name), StylePath.Render(suffix), StylePath.Render(path))
 }
 
 // worktreeDisplay returns wt.Name if set, else the basename of the path
