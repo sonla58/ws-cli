@@ -64,8 +64,29 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	}
 	q := strings.Join(args, " ")
 	hits := resolve.Resolve(cfg, q)
+
+	// Exact workspace/worktree name match wins outright.
+	hasExactName := false
+	for _, h := range hits {
+		if h.Name() == q {
+			hasExactName = true
+			break
+		}
+	}
+
+	// If no exact-name match, a group name match opens a group-filtered picker.
+	if !hasExactName {
+		if names, ok := workspacesInGroup(cfg, q); ok {
+			if len(names) == 0 {
+				fmt.Fprintf(os.Stderr, "ws: group %q has no workspaces\n", q)
+				os.Exit(1)
+			}
+			return openPicker(cfg, names)
+		}
+	}
+
 	if len(hits) == 0 {
-		fmt.Fprintf(os.Stderr, "ws: no workspace matches %q\n", q)
+		fmt.Fprintf(os.Stderr, "ws: no workspace or group matches %q\n", q)
 		os.Exit(1)
 	}
 	if len(hits) == 1 {
@@ -85,6 +106,27 @@ func runRoot(cmd *cobra.Command, args []string) error {
 		}
 	}
 	return openPicker(cfg, uniq)
+}
+
+// workspacesInGroup returns the names of workspaces in the group, and whether
+// the group exists. A declared-but-empty group returns (nil, true).
+func workspacesInGroup(cfg model.Config, name string) ([]string, bool) {
+	found := false
+	for _, g := range cfg.Groups {
+		if g.Name == name {
+			found = true
+			break
+		}
+	}
+	// Workspaces can reference a group without it being declared in [[groups]].
+	var names []string
+	for _, w := range cfg.Workspaces {
+		if w.Group == name {
+			names = append(names, w.Name)
+			found = true
+		}
+	}
+	return names, found
 }
 
 func openPicker(cfg model.Config, restrict []string) error {
