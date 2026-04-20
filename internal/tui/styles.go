@@ -1,6 +1,24 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"os"
+	"sync"
+
+	"github.com/charmbracelet/lipgloss"
+)
+
+var useStderrRendererOnce sync.Once
+
+// useStderrRenderer points lipgloss's default renderer at stderr. The shell
+// wrapper captures stdout (`out=$(ws …)`), so lipgloss's default, which probes
+// stdout, drops to no-color. Called from the TUI entrypoints (not package
+// init) because constructing a renderer can probe the terminal, which stalls
+// in non-TTY shells for subcommands that never draw a TUI.
+func useStderrRenderer() {
+	useStderrRendererOnce.Do(func() {
+		lipgloss.SetDefaultRenderer(lipgloss.NewRenderer(os.Stderr))
+	})
+}
 
 var (
 	StyleGroup    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7aa2f7"))

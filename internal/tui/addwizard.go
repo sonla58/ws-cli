@@ -65,6 +65,7 @@ func RunAddWizard(cfg model.Config, candidates []Candidate) ([]Candidate, bool, 
 		candidates: candidates,
 		aliased:    map[int]bool{},
 	}
+	useStderrRenderer()
 	p := tea.NewProgram(m, tea.WithOutput(os.Stderr), tea.WithAltScreen())
 	final, err := p.Run()
 	if err != nil {

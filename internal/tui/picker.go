@@ -92,6 +92,7 @@ func runPickerWith(cfg model.Config, restrict map[string]bool) (Result, error) {
 	}
 	m.rebuild()
 
+	useStderrRenderer()
 	p := tea.NewProgram(m, tea.WithOutput(os.Stderr), tea.WithAltScreen())
 	final, err := p.Run()
 	if err != nil {
