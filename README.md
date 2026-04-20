@@ -11,7 +11,7 @@
 
 **Fast, git-aware workspace manager for your terminal.**
 
-[Install](#install) · [Usage](#usage) · [Worktrees](#how-worktree-workspaces-work) · [Config](#configuration)
+[Install](#install) · [Usage](#usage)
 
 </div>
 
@@ -239,30 +239,3 @@ time and caches it in the config. Detected types:
 
 Icons render via Nerd Font glyphs by default. Set `NO_NERD_FONT=1` to fall
 back to plain letters.
-
-## Development
-
-```sh
-make build                 # build binary into ./ws
-make test                  # run unit tests
-make install               # install to $HOME/.local/bin (override with PREFIX=/usr/local)
-make release-snapshot      # goreleaser dry-run (requires goreleaser)
-```
-
-Project layout:
-
-```
-cmd/ws/              cobra entrypoint, subcommands
-internal/config/     TOML load/save, XDG paths, atomic writes
-internal/model/      Workspace / Group / Worktree types
-internal/git/        `git worktree list` parsing
-internal/scan/       depth-limited repo walker
-internal/detect/     project-type signature detection
-internal/shell/      shell integration templates (bash/zsh/fish)
-internal/resolve/    name → path resolver (exact → prefix → fuzzy)
-internal/tui/        bubbletea picker + add wizard
-```
-
-## License
-
-MIT (add a `LICENSE` file before tagging a release).
