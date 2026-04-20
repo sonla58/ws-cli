@@ -8,6 +8,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"path/filepath"
+
 	"github.com/longnguyen/ws-cli/internal/detect"
 	"github.com/longnguyen/ws-cli/internal/model"
 	"github.com/sahilm/fuzzy"
@@ -430,11 +432,20 @@ func (m *pickerModel) renderWorkspace(r row, selected bool) string {
 func (m *pickerModel) renderWorktree(r row, selected bool) string {
 	indent := strings.Repeat("  ", r.depth)
 	icon := StyleIcon.Render(detect.Icon(detect.Type(r.wt.Icon)))
-	name := r.wt.Name
+	name := worktreeDisplay(r.wt)
 	nameStyle := StyleName
 	if selected {
 		nameStyle = StyleNameSel
 	}
 	return fmt.Sprintf("%s· %s %s  %s",
 		indent, icon, nameStyle.Render(name), StylePath.Render(r.wt.Path))
+}
+
+// worktreeDisplay returns wt.Name if set, else the basename of the path
+// rendered with a subtle "unaliased" hint.
+func worktreeDisplay(wt *model.Worktree) string {
+	if wt.Name != "" {
+		return wt.Name
+	}
+	return filepath.Base(wt.Path)
 }

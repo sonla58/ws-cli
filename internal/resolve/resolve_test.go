@@ -50,3 +50,23 @@ func TestResolveEmpty(t *testing.T) {
 		t.Fatalf("empty query should return nil, got %+v", h)
 	}
 }
+
+func TestResolveSkipsUnaliasedWorktrees(t *testing.T) {
+	cfg := model.Config{
+		Workspaces: []model.Workspace{
+			{Name: "api", Path: "/a", Worktrees: []model.Worktree{
+				{Name: "", Path: "/a-feat"},         // unaliased
+				{Name: "api/release", Path: "/a-r"}, // explicit prefixed alias
+			}},
+		},
+	}
+	// Query matching basename of unaliased worktree should NOT find it.
+	if h := Resolve(cfg, "a-feat"); len(h) != 0 {
+		t.Fatalf("unaliased worktree should be unreachable: %+v", h)
+	}
+	// Prefixed alias should be reachable.
+	h := Resolve(cfg, "api/release")
+	if len(h) != 1 || h[0].Path() != "/a-r" {
+		t.Fatalf("prefixed alias unreachable: %+v", h)
+	}
+}

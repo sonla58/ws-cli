@@ -354,8 +354,15 @@ func applyAdd(cfg *model.Config, results []tui.Candidate) {
 				byPath[filepath.Clean(c.ParentRoot)] = &cfg.Workspaces[len(cfg.Workspaces)-1]
 				parent = byPath[filepath.Clean(c.ParentRoot)]
 			}
+			// c.Name holds the user-entered suffix (may be empty). Prefix it
+			// with the parent's alias so the worktree is globally resolvable
+			// as `${parent}/${suffix}`. Empty = unaliased (still saved).
+			finalName := ""
+			if c.Name != "" {
+				finalName = parent.Name + "/" + c.Name
+			}
 			parent.Worktrees = append(parent.Worktrees, model.Worktree{
-				Name: c.Name, Path: c.Path, Icon: c.Icon,
+				Name: finalName, Path: c.Path, Icon: c.Icon,
 			})
 			continue
 		}
@@ -445,7 +452,11 @@ func cmdList() *cobra.Command {
 				for _, w := range groups[g] {
 					fmt.Fprintf(out(), "  %-20s %s\n", w.Name, w.Path)
 					for _, wt := range w.Worktrees {
-						fmt.Fprintf(out(), "    ↳ %-16s %s\n", wt.Name, wt.Path)
+						name := wt.Name
+						if name == "" {
+							name = "(" + filepath.Base(wt.Path) + ")"
+						}
+						fmt.Fprintf(out(), "    ↳ %-16s %s\n", name, wt.Path)
 					}
 				}
 			}
@@ -513,8 +524,10 @@ func cmdRefresh() *cobra.Command {
 							if existing[filepath.Clean(e.Path)] {
 								continue
 							}
+							// refresh auto-discovers worktrees unaliased; user can
+							// rename later or re-run `ws add` to alias interactively.
 							w.Worktrees = append(w.Worktrees, model.Worktree{
-								Name: filepath.Base(e.Path),
+								Name: "",
 								Path: e.Path,
 								Icon: string(detect.DetectType(e.Path)),
 							})

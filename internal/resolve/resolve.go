@@ -52,6 +52,10 @@ func Resolve(cfg model.Config, query string) []Hit {
 		names = append(names, w.Name)
 		for j := range w.Worktrees {
 			wt := &w.Worktrees[j]
+			// Empty-name worktrees aren't globally resolvable by query.
+			if wt.Name == "" {
+				continue
+			}
 			all = append(all, Hit{Workspace: w, Worktree: wt})
 			names = append(names, wt.Name)
 		}
