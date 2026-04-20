@@ -40,11 +40,12 @@ const (
 )
 
 type row struct {
-	kind  rowKind
-	group string
-	w     *model.Workspace // for workspace and worktree
-	wt    *model.Worktree  // for worktree only
-	depth int
+	kind   rowKind
+	group  string
+	w      *model.Workspace // for workspace and worktree rows
+	wt     *model.Worktree  // for worktree rows only
+	depth  int
+	isRoot bool // when kind==rowWorktree, synthesizes the parent root as a leaf
 }
 
 type pickerModel struct {
@@ -143,6 +144,9 @@ func (m *pickerModel) rebuild() {
 		for _, w := range ws {
 			m.rows = append(m.rows, row{kind: rowWorkspace, w: w, depth: 1})
 			if m.expanded[w.Name] {
+				// Synthetic "root" leaf so user can pick the main worktree
+				// directly when the workspace has additional worktrees.
+				m.rows = append(m.rows, row{kind: rowWorktree, w: w, depth: 2, isRoot: true})
 				for k := range w.Worktrees {
 					m.rows = append(m.rows, row{kind: rowWorktree, w: w, wt: &w.Worktrees[k], depth: 2})
 				}
@@ -316,6 +320,10 @@ func (m *pickerModel) choose() {
 	r := m.rows[m.cursor]
 	switch r.kind {
 	case rowWorktree:
+		if r.isRoot {
+			m.result = Result{Action: ActionChoose, Path: r.w.Path}
+			return
+		}
 		m.result = Result{Action: ActionChoose, Path: r.wt.Path}
 	case rowWorkspace:
 		if len(r.w.Worktrees) == 0 {
@@ -325,7 +333,10 @@ func (m *pickerModel) choose() {
 		if !m.expanded[r.w.Name] {
 			m.expanded[r.w.Name] = true
 			m.rebuild()
+			return
 		}
+		// Already expanded → pressing Enter on the root row also opens the root.
+		m.result = Result{Action: ActionChoose, Path: r.w.Path}
 	}
 }
 
@@ -431,14 +442,24 @@ func (m *pickerModel) renderWorkspace(r row, selected bool) string {
 
 func (m *pickerModel) renderWorktree(r row, selected bool) string {
 	indent := strings.Repeat("  ", r.depth)
-	icon := StyleIcon.Render(detect.Icon(detect.Type(r.wt.Icon)))
-	name := worktreeDisplay(r.wt)
+	var iconKey, name, suffix, path string
+	if r.isRoot {
+		iconKey = r.w.Icon
+		name = r.w.Name
+		suffix = "  (root)"
+		path = r.w.Path
+	} else {
+		iconKey = r.wt.Icon
+		name = worktreeDisplay(r.wt)
+		path = r.wt.Path
+	}
+	icon := StyleIcon.Render(detect.Icon(detect.Type(iconKey)))
 	nameStyle := StyleName
 	if selected {
 		nameStyle = StyleNameSel
 	}
-	return fmt.Sprintf("%s· %s %s  %s",
-		indent, icon, nameStyle.Render(name), StylePath.Render(r.wt.Path))
+	return fmt.Sprintf("%s· %s %s%s  %s",
+		indent, icon, nameStyle.Render(name), StylePath.Render(suffix), StylePath.Render(path))
 }
 
 // worktreeDisplay returns wt.Name if set, else the basename of the path
