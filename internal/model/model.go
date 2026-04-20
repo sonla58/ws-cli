@@ -1,10 +1,11 @@
 package model
 
 type Config struct {
-	Schema     int         `toml:"schema"`
-	Scan       ScanConfig  `toml:"scan"`
-	Groups     []Group     `toml:"groups"`
-	Workspaces []Workspace `toml:"workspaces"`
+	Schema                    int         `toml:"schema"`
+	Scan                      ScanConfig  `toml:"scan"`
+	Groups                    []Group     `toml:"groups"`
+	Workspaces                []Workspace `toml:"workspaces"`
+	ShellIntegrationDismissed bool        `toml:"shell_integration_dismissed,omitempty"`
 }
 
 type ScanConfig struct {

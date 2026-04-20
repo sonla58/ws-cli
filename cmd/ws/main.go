@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -8,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 
 	"github.com/sonla58/ws-cli/internal/config"
@@ -58,6 +61,9 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	cfg, _, err := config.Load()
 	if err != nil {
 		return err
+	}
+	if err := maybePromptShellIntegration(&cfg); err != nil {
+		fmt.Fprintln(os.Stderr, "ws: shell integration setup:", err)
 	}
 	if len(args) == 0 {
 		return openPicker(cfg, nil)
@@ -168,6 +174,62 @@ func openPicker(cfg model.Config, restrict []string) error {
 
 func emitChosen(p string) {
 	fmt.Fprintln(os.Stdout, p)
+}
+
+// maybePromptShellIntegration offers to install the shell wrapper when it
+// isn't active. No-op when already active, dismissed, or non-interactive.
+func maybePromptShellIntegration(cfg *model.Config) error {
+	if shell.IsActive() || emitPath {
+		return nil
+	}
+	if cfg.ShellIntegrationDismissed {
+		return nil
+	}
+	if !isatty.IsTerminal(os.Stdin.Fd()) || !isatty.IsTerminal(os.Stderr.Fd()) {
+		return nil
+	}
+	sh, rcPath, err := shell.Detect()
+	if err != nil {
+		// Don't dismiss on unsupported shells — user may switch to a supported
+		// one and expect the prompt to reappear.
+		fmt.Fprintln(os.Stderr, "ws: shell integration not detected —", err)
+		return nil
+	}
+	installed, err := shell.AlreadyInstalled(rcPath)
+	if err != nil {
+		return err
+	}
+	if installed {
+		fmt.Fprintf(os.Stderr, "ws: shell integration is in %s but not loaded. Run `source %s` or open a new terminal.\n\n", rcPath, rcPath)
+		return nil
+	}
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "ws needs a shell function to change your directory.")
+	fmt.Fprintf(os.Stderr, "Append the integration line to %s now? [Y]es / [n]ot now / [d]on't ask again: ", rcPath)
+
+	reader := bufio.NewReader(os.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "", "y", "yes":
+		if err := shell.Install(sh, rcPath); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "ws: added integration to %s.\n", rcPath)
+		fmt.Fprintf(os.Stderr, "    run `source %s` or open a new terminal to activate.\n\n", rcPath)
+	case "d", "don't", "dont":
+		cfg.ShellIntegrationDismissed = true
+		if err := config.Save(*cfg); err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stderr, "ws: won't ask again. Run `ws init <shell>` any time to see the setup snippet.")
+	default:
+		fmt.Fprintln(os.Stderr, "ws: skipped for now.")
+	}
+	return nil
 }
 
 // ---- add ----
