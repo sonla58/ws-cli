@@ -90,12 +90,12 @@ func runRoot(cmd *cobra.Command, args []string) error {
 		os.Exit(1)
 	}
 	if len(hits) == 1 {
-		h := hits[0]
-		if h.Worktree != nil || len(h.Workspace.Worktrees) == 0 {
-			emitChosen(h.Path())
-			return nil
-		}
-		return openPicker(cfg, []string{h.Workspace.Name})
+		// Single match (workspace or worktree) → jump directly. Worktrees
+		// named explicitly (`ws root/suffix`) go straight to the worktree
+		// path; otherwise we open the workspace root. Use bare `ws` (or
+		// `ws <group>`) when you want the picker.
+		emitChosen(hits[0].Path())
+		return nil
 	}
 	names := map[string]bool{}
 	var uniq []string
