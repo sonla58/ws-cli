@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -63,12 +62,8 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	shellInstalled, err := maybePromptShellIntegration(&cfg)
-	if err != nil {
+	if err := maybePromptShellIntegration(&cfg); err != nil {
 		fmt.Fprintln(os.Stderr, "ws: shell integration setup:", err)
-	}
-	if shellInstalled {
-		return reexecWithShellIntegration(args)
 	}
 	if len(args) == 0 {
 		return openPicker(cfg, nil)
@@ -182,31 +177,29 @@ func emitChosen(p string) {
 }
 
 // maybePromptShellIntegration offers to install the shell wrapper when it
-// isn't active. Returns true if integration was newly installed.
-func maybePromptShellIntegration(cfg *model.Config) (bool, error) {
+// isn't active. No-op when already active, dismissed, or non-interactive.
+func maybePromptShellIntegration(cfg *model.Config) error {
 	if shell.IsActive() || emitPath {
-		return false, nil
+		return nil
 	}
 	if cfg.ShellIntegrationDismissed {
-		return false, nil
+		return nil
 	}
 	if !isatty.IsTerminal(os.Stdin.Fd()) || !isatty.IsTerminal(os.Stderr.Fd()) {
-		return false, nil
+		return nil
 	}
 	sh, rcPath, err := shell.Detect()
 	if err != nil {
-		// Don't dismiss on unsupported shells — user may switch to a supported
-		// one and expect the prompt to reappear.
 		fmt.Fprintln(os.Stderr, "ws: shell integration not detected —", err)
-		return false, nil
+		return nil
 	}
 	installed, err := shell.AlreadyInstalled(rcPath)
 	if err != nil {
-		return false, err
+		return err
 	}
 	if installed {
 		fmt.Fprintf(os.Stderr, "ws: shell integration is in %s but not loaded. Run `source %s` or open a new terminal.\n\n", rcPath, rcPath)
-		return false, nil
+		return nil
 	}
 
 	fmt.Fprintln(os.Stderr)
@@ -216,45 +209,27 @@ func maybePromptShellIntegration(cfg *model.Config) (bool, error) {
 	reader := bufio.NewReader(os.Stdin)
 	line, err := reader.ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
-		return false, err
+		return err
 	}
 	switch strings.ToLower(strings.TrimSpace(line)) {
 	case "", "y", "yes":
 		if err := shell.Install(sh, rcPath); err != nil {
-			return false, err
+			return err
 		}
 		fmt.Fprintf(os.Stderr, "ws: added integration to %s.\n", rcPath)
-		fmt.Fprintf(os.Stderr, "    re-running with integration...\n\n")
-		return true, nil
+		fmt.Fprintln(os.Stderr, "ws: integration will be active in new shells.")
+		fmt.Fprintln(os.Stderr, "To enable in this shell, run:")
+		fmt.Fprintf(os.Stderr, "  eval \"$(ws init %s)\"\n", sh)
 	case "d", "don't", "dont":
 		cfg.ShellIntegrationDismissed = true
 		if err := config.Save(*cfg); err != nil {
-			return false, err
+			return err
 		}
 		fmt.Fprintln(os.Stderr, "ws: won't ask again. Run `ws init <shell>` any time to see the setup snippet.")
 	default:
 		fmt.Fprintln(os.Stderr, "ws: skipped for now.")
 	}
-	return false, nil
-}
-
-// reexecWithShellIntegration sources the rc file and re-executes the original
-// command so the shell function becomes available immediately.
-func reexecWithShellIntegration(args []string) error {
-	sh, rcPath, err := shell.Detect()
-	if err != nil {
-		return err
-	}
-
-	quotedArgs := make([]string, len(args))
-	for i, a := range args {
-		quotedArgs[i] = fmt.Sprintf("%q", a)
-	}
-	cmd := exec.Command(sh, "-c", fmt.Sprintf("source %s && WS_SHELL_INTEGRATION=1 ws %s", rcPath, strings.Join(quotedArgs, " ")))
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return nil
 }
 
 // ---- add ----
