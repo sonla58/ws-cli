@@ -190,8 +190,6 @@ func maybePromptShellIntegration(cfg *model.Config) error {
 	}
 	sh, rcPath, err := shell.Detect()
 	if err != nil {
-		// Don't dismiss on unsupported shells — user may switch to a supported
-		// one and expect the prompt to reappear.
 		fmt.Fprintln(os.Stderr, "ws: shell integration not detected —", err)
 		return nil
 	}
@@ -219,7 +217,9 @@ func maybePromptShellIntegration(cfg *model.Config) error {
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "ws: added integration to %s.\n", rcPath)
-		fmt.Fprintf(os.Stderr, "    run `source %s` or open a new terminal to activate.\n\n", rcPath)
+		fmt.Fprintln(os.Stderr, "ws: integration will be active in new shells.")
+		fmt.Fprintln(os.Stderr, "To enable in this shell, run:")
+		fmt.Fprintf(os.Stderr, "  eval \"$(ws init %s)\"\n", sh)
 	case "d", "don't", "dont":
 		cfg.ShellIntegrationDismissed = true
 		if err := config.Save(*cfg); err != nil {
